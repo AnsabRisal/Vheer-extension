@@ -1,0 +1,20 @@
+# Packaging config — used by `npm run package`.
+# Playwright is a runtime dependency and ships its own Chromium inside the
+# Playwright package; the automation browser is downloaded on demand (see README).
+
+appId: com.istorystudio.app
+productName: AI Story Studio
+directories:
+  output: dist
+  buildResources: assets
+files:
+  - out/**
+  - package.json
+  - "!node_modules/**/test/**"
+win:
+  target:
+    - nsis
+  executableName: AI-Story-Studio
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

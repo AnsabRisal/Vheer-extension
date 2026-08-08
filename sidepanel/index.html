@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vheer Story Studio</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header__brand">🎬 Vheer Story Studio</div>
+    <div class="header__actions">
+      <button id="btn-debug-toggle" class="btn-icon" title="Debug Console">🔍</button>
+      <button id="btn-diagnostics" class="btn-icon" title="Diagnostics">🩺</button>
+      <button id="btn-settings" class="btn-icon" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN VIEW ===== -->
+  <main id="view-main" class="view" data-mode="image">
+
+    <!-- Mode Switcher -->
+    <section class="section">
+      <h3>Generation Mode</h3>
+      <div class="mode-switch">
+        <button id="btn-mode-image" class="mode-btn mode-btn--active">🎨 Image</button>
+        <button id="btn-mode-video" class="mode-btn">🎬 Video</button>
+      </div>
+    </section>
+
+    <!-- ===== IMAGE MODE ===== -->
+
+    <!-- Import -->
+    <section class="section mode-image">
+      <button id="btn-import" class="btn btn--primary btn--full">📂 Import ALL-MASTER-PROMPTS.md</button>
+      <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden />
+      <div id="import-status" class="status-text"></div>
+    </section>
+
+    <!-- Project -->
+    <section id="sec-project" class="section hidden">
+      <div class="row space-between">
+        <span class="project-name" id="project-name"></span>
+        <span class="text-dim" id="shot-count"></span>
+      </div>
+    </section>
+
+    <!-- Vheer Status -->
+    <section id="sec-vheer" class="section">
+      <h3>Vheer Status</h3>
+      <div id="vheer-status" class="status-banner">—</div>
+      <div id="test-result" class="status-text"></div>
+      <details id="test-dump-wrap" class="test-dump-wrap hidden">
+        <summary>View element dump (candidates)</summary>
+        <div id="test-dump"></div>
+      </details>
+    </section>
+
+    <!-- Test / Debug Buttons -->
+    <section class="section">
+      <h3>Page Tools</h3>
+      <div class="test-buttons">
+        <button id="btn-test-conn" class="btn btn--small">🔌 Test Connection</button>
+        <button id="btn-inspect" class="btn btn--small">🔍 Inspect Page</button>
+        <button id="btn-test-fill" class="btn btn--small">✏️ Test Fill Prompt</button>
+        <button id="btn-test-gen" class="btn btn--small">⚡ Test Generate</button>
+      </div>
+    </section>
+
+    <!-- Controls -->
+    <section id="sec-controls" class="section hidden">
+      <div class="controls">
+        <button id="btn-start" class="btn btn--primary">▶ Start</button>
+        <button id="btn-pause" class="btn hidden">⏸ Pause</button>
+        <button id="btn-resume" class="btn hidden">▶ Resume</button>
+        <button id="btn-stop" class="btn btn--danger hidden">⏹ Stop</button>
+      </div>
+      <div class="progress-track">
+        <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+      </div>
+      <div class="row space-between text-dim stats">
+        <span>✓ <b id="stat-completed">0</b></span>
+        <span>✗ <b id="stat-failed">0</b></span>
+        <span>… <b id="stat-waiting">0</b></span>
+      </div>
+    </section>
+
+    <!-- Live Stats -->
+    <section id="sec-stats" class="section hidden">
+      <h3>Live Statistics</h3>
+      <div class="stats-grid">
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-completed">0</div>
+          <div class="stats-tile__label">Completed</div>
+        </div>
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-remaining">0</div>
+          <div class="stats-tile__label">Remaining</div>
+        </div>
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-retries">0</div>
+          <div class="stats-tile__label">Retries</div>
+        </div>
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-failures">0</div>
+          <div class="stats-tile__label">Failures</div>
+        </div>
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-avg">—</div>
+          <div class="stats-tile__label">Avg Gen Time</div>
+        </div>
+        <div class="stats-tile">
+          <div class="stats-tile__val" id="stat-gen-longest">—</div>
+          <div class="stats-tile__label">Longest Gen</div>
+        </div>
+        <div class="stats-tile stats-tile--wide">
+          <div class="stats-tile__val" id="stat-gen-eta">—</div>
+          <div class="stats-tile__label">Est. Remaining</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Canary / batch error banner -->
+    <section id="sec-canary" class="section hidden">
+      <div id="canary-banner" class="status-banner"></div>
+    </section>
+
+    <!-- Delay -->
+    <section id="sec-delay" class="section hidden">
+      <div class="row space-between">
+        <span id="delay-countdown" class="text-dim">Delay…</span>
+        <div class="row">
+          <button id="btn-skip-delay" class="btn btn--small">Skip</button>
+          <button id="btn-delay-pause" class="btn btn--small">Pause</button>
+          <button id="btn-delay-stop" class="btn btn--small">Stop</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Queue -->
+    <section id="sec-queue" class="section hidden">
+      <h3>Queue</h3>
+      <div id="shot-list"></div>
+    </section>
+
+    <!-- ===== VIDEO MODE ===== -->
+
+    <!-- Video Import -->
+    <section class="section mode-video">
+      <button id="btn-video-import" class="btn btn--primary btn--full">📹 Import VIDEO_PROMPTS.md</button>
+      <input type="file" id="video-file-input" accept=".md,.markdown,.txt" hidden />
+      <div id="video-import-status" class="status-text"></div>
+    </section>
+
+    <!-- Source Images Folder -->
+    <section id="sec-video-folder" class="section mode-video hidden">
+      <h3>Source Images Folder</h3>
+      <button id="btn-pick-folder" class="btn btn--full">📁 Choose Images Folder</button>
+      <input type="file" id="folder-input" webkitdirectory multiple hidden />
+      <div id="folder-status" class="status-text"></div>
+    </section>
+
+  </main>
+
+  <!-- ===== INSPECT VIEW ===== -->
+  <div id="view-inspect" class="view hidden">
+    <div class="view-header">
+      <button id="btn-inspect-back" class="btn-icon">←</button>
+      <h2>Page Inspector</h2>
+    </div>
+    <div id="inspect-content" class="inspect-content"></div>
+  </div>
+
+  <!-- ===== DEBUG VIEW ===== -->
+  <div id="view-debug" class="view hidden">
+    <div class="view-header">
+      <button id="btn-debug-back" class="btn-icon">←</button>
+      <h2>Debug Console</h2>
+      <button id="btn-debug-clear" class="btn btn--small">Clear</button>
+    </div>
+    <div id="debug-log" class="debug-log"></div>
+  </div>
+
+  <!-- ===== SETTINGS VIEW ===== -->
+  <div id="view-settings" class="view hidden">
+    <div class="view-header">
+      <button id="btn-settings-back" class="btn-icon">←</button>
+      <h2>Settings</h2>
+    </div>
+
+    <section class="section">
+      <h3>Delay Between Completed Shots</h3>
+      <div class="settings-group">
+        <label><input type="radio" name="delay-mode" id="set-delay-mode" value="fixed" /> Fixed</label>
+        <label><input type="radio" name="delay-mode" id="set-delay-mode-random" value="random" /> Random</label>
+      </div>
+      <div id="fixed-delay-fields">
+        <label class="setting-row">Seconds
+          <input type="number" id="set-delay" min="1" max="600" />
+        </label>
+      </div>
+      <div id="random-delay-fields" class="hidden">
+        <label class="setting-row">Min
+          <input type="number" id="set-delay-min" min="1" max="600" />
+        </label>
+        <label class="setting-row">Max
+          <input type="number" id="set-delay-max" min="1" max="600" />
+        </label>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3>Generation</h3>
+      <label class="setting-row">Retries
+        <input type="number" id="set-retries" min="0" max="10" />
+      </label>
+      <label class="setting-row">Filename Format
+        <input type="text" id="set-filename" placeholder="SHOT{N}" />
+      </label>
+      <label class="setting-row">Project Name
+        <input type="text" id="set-project" placeholder="My Project" />
+      </label>
+    </section>
+
+    <section class="section">
+      <h3>Watchdog</h3>
+      <label class="setting-row">Max Stall Duration (s)
+        <input type="number" id="set-max-stall" min="10" max="300" />
+      </label>
+      <label class="setting-row">Max Generation Time (s)
+        <input type="number" id="set-max-gen" min="30" max="3600" />
+      </label>
+      <label class="setting-row">Poll Interval (ms)
+        <input type="number" id="set-poll-interval" min="500" max="10000" step="100" />
+      </label>
+      <label class="setting-row">Recovery Delay (s)
+        <input type="number" id="set-recovery-delay" min="1" max="60" />
+      </label>
+      <label class="setting-row">Retry Delay (s)
+        <input type="number" id="set-retry-delay" min="1" max="120" />
+      </label>
+    </section>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

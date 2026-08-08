@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+                   script-src 'self';
+                   style-src 'self' 'unsafe-inline';
+                   img-src 'self' data: story-image:;
+                   font-src 'self';
+                   connect-src 'self';" />
+    <title>AI Story Studio</title>
+    <link rel="stylesheet" href="./styles/base.css" />
+    <link rel="stylesheet" href="./styles/components.css" />
+    <link rel="stylesheet" href="./styles/views.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- AppShell mounts here -->
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

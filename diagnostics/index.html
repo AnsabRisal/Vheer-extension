@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Story Studio — Diagnostics</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+      background: #0d1117; color: #c9d1d9;
+      padding: 24px; max-width: 800px; margin: 0 auto;
+    }
+    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 18px; }
+    .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 24px; }
+    .section { margin-bottom: 20px; }
+    .section h2 { color: #79c0ff; font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid #21262d; padding-bottom: 4px; }
+    .row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 6px;
+      margin-bottom: 4px; font-size: 13px;
+    }
+    .row.ok   { background: #0d2818; border-left: 3px solid #3fb950; }
+    .row.fail { background: #2d1314; border-left: 3px solid #f85149; }
+    .row.info { background: #0c2d6b; border-left: 3px solid #58a6ff; }
+    .row.wait { background: #2d2200; border-left: 3px solid #d29922; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-weight: 600; font-size: 11px; min-width: 24px; text-align: center;
+    }
+    .badge.ok   { background: #238636; color: #fff; }
+    .badge.fail { background: #da3633; color: #fff; }
+    .badge.wait { background: #9e6a03; color: #fff; }
+    .label { flex: 1; }
+    .detail { color: #8b949e; font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .btn:hover { background: #30363d; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #btn-run { background: #238636; color: #fff; border-color: #2ea043; margin-top: 12px; }
+    #btn-run:hover { background: #2ea043; }
+    .log { background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+      padding: 12px; margin-top: 12px; font-size: 12px; max-height: 300px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-all; color: #8b949e; }
+    .log .ok { color: #3fb950; } .log .err { color: #f85149; } .log .warn { color: #d29922; }
+  </style>
+</head>
+<body>
+  <h1>🎬 Vheer Story Studio — Diagnostics</h1>
+  <div class="subtitle">Extension injection & connection health</div>
+
+  <div id="results"></div>
+
+  <button class="btn" id="btn-run" onclick="runDiagnostics()">Run Diagnostics</button>
+  <div class="log" id="log"></div>
+
+  <script src="diagnostics.js"></script>
+</body>
+</html>

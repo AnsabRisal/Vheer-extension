@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Vheer Story Studio",
+  "version": "0.6.0",
+  "description": "One-button cinematic image generation for Vheer Text-to-Image",
+  "permissions": [
+    "sidePanel",
+    "downloads",
+    "storage",
+    "tabs",
+    "alarms",
+    "activeTab",
+    "scripting",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "*://vheer.com/*"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://vheer.com/app/*"],
+      "js": ["content-scripts/vheer.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Open Vheer Story Studio",
+    "default_icon": "icons/icon48.png"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

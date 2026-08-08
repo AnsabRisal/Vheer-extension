@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# Runtime data (created on first launch)
+downloads/*.tmp
+downloads/*.crdownload
+logs/
+settings/settings.json
+
+# Generated images are user work product — ignore by default
+projects/*/Images/*.png
+projects/*/Images/*.jpg
+projects/*/Images/*.jpeg
+projects/*/Images/*.webp
+!projects/*/Images/.gitkeep
+
+# Project queue state (generated at runtime)
+projects/*/queue.json
+
+# OS
+.DS_Store
+Thumbs.db
