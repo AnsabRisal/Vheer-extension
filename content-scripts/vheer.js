@@ -121,6 +121,21 @@
     // halts instead of continuing to click buttons after the user hits Stop.
     let _automationAborted = false;
 
+    // Unique id for THIS content-script instance. If duplicate log lines carry
+    // DIFFERENT instance ids, two copies of the script are running in the same
+    // frame. Same instance id → a single copy received/executed twice.
+    const _instanceId = 'cs-' + Math.random().toString(36).slice(2, 8);
+
+    // Run id threaded through a shot's pipeline. If two log lines for the same
+    // operation carry the SAME run id, the operation ran twice (re-entrancy).
+    // Different run ids → two independent pipelines were started.
+    let _currentRunId = null;
+
+    // Guards: only one video pipeline / one post-download cleanup may run per
+    // content-script instance at a time.
+    let _videoPipelineActive = false;
+    let _cleanupInProgress = false;
+
     // ---- Generic helpers ---------------------------------------------------
 
     function delay(min, max) {
@@ -139,8 +154,14 @@
 
     function debugLog(step, detail, ok) {
       if (ok === undefined) ok = true;
-      const entry = { ts: Date.now(), step, detail: detail || '', ok, frame: window.location.hostname };
-      console[ok ? 'log' : 'warn'](TAG, ok ? '✓' : '✗', step, detail || '');
+      const entry = {
+        ts: Date.now(), step, detail: detail || '', ok,
+        frame: window.location.hostname,
+        instance: _instanceId,
+        runId: _currentRunId
+      };
+      const runTag = _currentRunId ? ' [run ' + _currentRunId + ']' : '';
+      console[ok ? 'log' : 'warn'](TAG, ok ? '✓' : '✗', '[' + _instanceId + ']' + runTag, step, detail || '');
       chrome.runtime.sendMessage({ type: 'DEBUG_LOG', entry }).catch(() => {});
     }
 
@@ -1165,6 +1186,21 @@
     async function runVideoStep(msg) {
       debugLog('Connected to Vheer Video', window.location.href.slice(0, 60));
       _automationAborted = false;
+
+      // Exactly one active pipeline per content-script instance. If a second
+      // RUN_VIDEO_STEP arrives while the first is mid-flight, reject it instead
+      // of duplicating every DOM action (upload / prompt / generate / download).
+      if (_videoPipelineActive) {
+        debugLog('Duplicate RUN_VIDEO_STEP blocked', 'pipeline already running', false);
+        return { ok: false, stage: 'duplicate', error: 'Video pipeline already running in this content script' };
+      }
+      _videoPipelineActive = true;
+      // Thread the SW's run id (or generate one) through every log line so the
+      // side panel can tell re-entrancy (same run id twice) from two independent
+      // pipelines (different run ids).
+      _currentRunId = msg.runId || ('r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+
+      try {
       const wd = msg.watchdog || {};
       const fail = (stage, detail, error) => {
         debugLog(stage, 'FAILED — ' + detail, false);
@@ -1239,6 +1275,109 @@
         promptChars: fill.chars,
         promptVerified
       };
+      } finally {
+        _videoPipelineActive = false;
+        _currentRunId = null;
+      }
+    }
+
+    /** VIDEO: find Vheer's Delete button (shown on the completed-result state). */
+    function findDeleteButton() {
+      const patterns = /^delete\b|delete result|delete image|remove|clear result|clear|trash/i;
+      for (const btn of document.querySelectorAll('button')) {
+        if (!isVisible(btn)) continue;
+        const text = (btn.textContent || '').trim();
+        const aria = (btn.getAttribute('aria-label') || '').trim();
+        const title = (btn.getAttribute('title') || '').trim();
+        if (patterns.test(text) || patterns.test(aria) || patterns.test(title)) return btn;
+      }
+      return null;
+    }
+
+    /**
+     * VIDEO: wait until Vheer is ready to accept the next image.  Readiness = a
+     * usable file input exists (reacquired fresh from the DOM each tick).  The
+     * raw <input type="file"> is deliberately HIDDEN by Vheer's UI — the user
+     * clicks a visible dropzone/label that drives it.  Visibility of the input
+     * is NOT a readiness condition; programmatic upload works on a hidden input.
+     */
+    function waitForFreshUploadState(timeoutMs = 30000) {
+      return new Promise((resolve) => {
+        const start = Date.now();
+        const poll = () => {
+          if (_automationAborted) { resolve({ ok: false, error: 'Aborted by Stop' }); return; }
+          // Re-query the DOM every tick — Vheer's React may replace elements.
+          const upload = findUploadInput();
+          const usable = !!upload && !upload.disabled;
+          if (usable) {
+            resolve({ ok: true });
+            return;
+          }
+          if (Date.now() - start > timeoutMs) {
+            resolve({ ok: false, error: 'Upload control not detected after ' + Math.round(timeoutMs / 1000) + 's' });
+            return;
+          }
+          setTimeout(poll, 500);
+        };
+        poll();
+      });
+    }
+
+    /**
+     * POST_DOWNLOAD_CLEANUP: after the SW confirms the MP4 download is complete,
+     * click Vheer's Delete button ONCE and wait for the upload control to
+     * re-appear.  Returns { ok:true } once the page is ready for the next upload.
+     */
+    async function performPostDownloadCleanup(msg) {
+      const shotNumber = msg.shotNumber;
+
+      if (_cleanupInProgress) {
+        debugLog('Cleanup', 'SHOT ' + shotNumber + ' — already in progress, skipping', false);
+        return { ok: false, stage: 'busy', error: 'Cleanup already in progress' };
+      }
+      _cleanupInProgress = true;
+
+      try {
+        const del = findDeleteButton();
+        if (!del) {
+          debugLog('Cleanup', 'SHOT ' + shotNumber + ' — no Delete button, checking if upload control exists');
+          const fresh = await waitForFreshUploadState(15000);
+          if (fresh.ok) {
+            debugLog('Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — upload control usable (no Delete needed)');
+            return { ok: true, deleted: false };
+          }
+          debugLog('Cleanup', 'Delete button not found and upload control not detected', false);
+          return { ok: false, stage: 'delete', error: 'Delete button not found and upload control not detected' };
+        }
+
+        debugLog('Cleanup', 'SHOT ' + shotNumber + ' — clicking Delete once');
+        const clicked = await humanClick(del);
+        if (_automationAborted) return { ok: false, stage: 'aborted', error: 'Aborted by Stop' };
+        if (!clicked.ok) return { ok: false, stage: 'delete', error: 'Delete click failed: ' + clicked.error };
+        debugLog('Cleanup', 'SHOT ' + shotNumber + ' — Delete clicked, waiting for upload control');
+
+        const fresh = await waitForFreshUploadState(30000);
+        if (!fresh.ok) {
+          // Report the ACTUAL page state so the failure is diagnosable.
+          const u = findUploadInput();
+          const dropzone = Array.from(document.querySelectorAll('button, [role="button"], label, [class*="drop" i], [class*="upload" i]'))
+            .find(el => isVisible(el));
+          const dl = findVideoDownload();
+          const delBtn = findDeleteButton();
+          const reason = !u ? 'no file input in DOM'
+            : u.disabled ? 'file input present but disabled'
+            : 'file input present but associated upload control missing'
+            + (dl ? ' / result Download control still visible' : '')
+            + (delBtn ? ' / result Delete control still visible' : '')
+            + (dropzone ? ' / visible dropzone: ' + (dropzone.textContent || dropzone.tagName).trim().slice(0, 40) : ' / no visible dropzone found');
+          debugLog('Cleanup', 'upload control check: ' + reason, false);
+          return { ok: false, stage: 'reset', error: 'Upload control not usable: ' + reason };
+        }
+        debugLog('Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — upload control detected and usable');
+        return { ok: true, deleted: true };
+      } finally {
+        _cleanupInProgress = false;
+      }
     }
 
     /**
@@ -1446,6 +1585,13 @@
 
       if (msg.type === 'RUN_VIDEO_STEP') {
         runVideoStep(msg)
+          .then(sendResponse)
+          .catch(e => sendResponse({ ok: false, error: e.message }));
+        return true;
+      }
+
+      if (msg.type === 'POST_DOWNLOAD_CLEANUP') {
+        performPostDownloadCleanup(msg)
           .then(sendResponse)
           .catch(e => sendResponse({ ok: false, error: e.message }));
         return true;

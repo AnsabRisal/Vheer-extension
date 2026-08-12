@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS = {
   maxGenSec: 600,           // hard cap per generation attempt (10 min)
   pollIntervalMs: 2000,     // watchdog tick interval
   recoveryDelaySec: 5,      // pause after overlay/popup dismiss before retry
-  retryDelaySec: 10         // delay before retry after reload/stall
+  retryDelaySec: 25         // delay before retry after reload/stall (video mode)
 };
 
 const TARGET_URL = 'https://vheer.com/app/text-to-image';
@@ -563,6 +563,11 @@ let activeRun = null;   // AbortController for the current run
 let currentSignal = null; // the run's signal (checked at every await)
 let runStopped = false; // true from Stop until the next Start/Resume
 
+// Shots currently being processed (`${mode}:${shotNumber}`). Guarantees exactly
+// one pipeline per shot: a second processShot() for the same shot is blocked
+// instead of duplicating every DOM action on the Vheer page.
+const _activeShots = new Set();
+
 function beginRun() {
   runStopped = false;
   activeRun = new AbortController();
@@ -670,7 +675,73 @@ async function handleDownloadComplete(downloadId) {
     status: 'SUCCESS'
   });
 
+  // VIDEO: after a confirmed download, Vheer stays on the completed-result
+  // state (generated video + Download/Delete buttons). The next shot cannot
+  // upload until that result is deleted. So click Delete, wait for the fresh
+  // upload state, and only then advance — with NO arbitrary between-shot delay.
+  if (m === 'video') {
+    debugLog('Video Cleanup', 'SHOT ' + shotNumber + ' — resetting Vheer result state');
+    try {
+      const tab = await findTargetTab({ video: true });
+      if (!tab) {
+        // No tab to clean up — fall back to the normal (delayed) advance.
+        debugLog('Video Cleanup', 'no Vheer tab — skipping cleanup', false);
+        scheduleNextShot(m, settings);
+        return;
+      }
+      // Single-shot: retries=1 so the cleanup is sent exactly once. The content
+      // script's async cleanup can take up to 30s, and sendToMainFrame would
+      // otherwise treat a late/undefined response as a failure and re-send —
+      // which produced the duplicate "Delete Clicked" in the logs.
+      const cleanup = await sendToMainFrame(tab.id, {
+        type: 'POST_DOWNLOAD_CLEANUP',
+        shotNumber
+      }, 1);
+      if (cleanup && cleanup.ok) {
+        debugLog('Video Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — upload control usable');
+        await advanceQueue(m);
+        return;
+      }
+      var cleanupReason = (cleanup && (cleanup.error || cleanup.stage)) || 'no response';
+    } catch (e) {
+      cleanupReason = 'exception: ' + e.message;
+    }
+    // The MP4 downloaded, but Vheer's result state was NOT reset — starting the
+    // next shot would fail. Do NOT silently advance: halt with a clear error so
+    // the user can reset the page manually and press Start to resume.
+    debugLog('Video Cleanup Failed', cleanupReason, false);
+    queue.status = 'error';
+    queue.error = 'SHOT ' + shotNumber + ' downloaded but cleanup failed: ' + cleanupReason;
+    chrome.alarms.clear('next-shot-video');
+    chrome.alarms.clear('next-shot');
+    await saveQueue(queue);
+    broadcastQueue(queue);
+    debugLog('BATCH HALTED', queue.error, false);
+    return;
+  }
+
   scheduleNextShot(m, settings);
+}
+
+/**
+ * Immediately start the next pending shot with NO between-shot delay. The
+ * Vheer result-state reset (Delete + upload control ready) is the sync point,
+ * not a timer.
+ */
+async function advanceQueue(mode) {
+  chrome.alarms.clear('next-shot-video');
+  chrome.alarms.clear('next-shot');
+  const queue = await loadQueue(mode);
+  if (queue.status !== 'running') return;
+  const next = nextPending(queue.shots);
+  if (next) {
+    debugLog('Queue advancing', 'starting SHOT ' + String(next.number).padStart(3, '0'));
+    processShot(mode, next.number);
+  } else {
+    queue.status = 'done';
+    await saveQueue(queue);
+    broadcastQueue(queue);
+  }
 }
 
 /** Poll a download until it is complete or interrupted. */
@@ -841,9 +912,22 @@ function buildWatchdogConfig(settings) {
 
 async function processShot(mode, shotNumber, attempt = 0) {
   if (isRunStopped()) return;
+
+  // Exactly one pipeline per shot. A second processShot() for the same shot is
+  // blocked here instead of duplicating upload/prompt/generate/download/delete
+  // on the Vheer page. The key is cleared in the finally below.
+  const shotKey = mode + ':' + shotNumber;
+  if (_activeShots.has(shotKey)) {
+    debugLog('Duplicate processShot blocked', shotKey + ' already running', false);
+    return;
+  }
+  _activeShots.add(shotKey);
+
   const signal = currentSignal;
   const abort = () => signal && signal.aborted;
+  const runId = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+  try {
   const queue = await loadQueue(mode);
   const settings = await loadSettings();
   const shot = queue.shots.find(s => s.number === shotNumber);
@@ -856,7 +940,7 @@ async function processShot(mode, shotNumber, attempt = 0) {
   broadcastQueue(queue);
   if (abort()) return;
 
-  debugLog('Processing SHOT ' + shotNumber, 'attempt ' + (attempt + 1));
+  debugLog('Processing SHOT ' + shotNumber, 'attempt ' + (attempt + 1) + ' [run ' + runId + ']');
 
   // Find Vheer tab (mode-aware: video targets the Image→Video route).
   const tab = await findTargetTab(mode === 'video' ? { video: true } : undefined);
@@ -892,7 +976,7 @@ async function processShot(mode, shotNumber, attempt = 0) {
       const genTimeoutMin = Math.max(1, (settings.maxGenSec + 60) / 60);
       chrome.alarms.create('gen-timeout-video-' + shotNumber, { delayInMinutes: genTimeoutMin });
 
-      const result = await runVideoPipeline(tab, shot, settings);
+      const result = await runVideoPipeline(tab, shot, settings, runId);
       if (abort()) {
         expectedDownload = null;
         chrome.alarms.clear('gen-timeout-video-' + shotNumber);
@@ -994,6 +1078,9 @@ async function processShot(mode, shotNumber, attempt = 0) {
     expectedDownload = null;
     chrome.alarms.clear('gen-timeout-' + shotNumber);
     failShot(mode, shotNumber, err.message);
+  }
+  } finally {
+    _activeShots.delete(shotKey);
   }
 }
 
@@ -1280,7 +1367,7 @@ async function handleImportVideoFile(content, projectName) {
  *   preview → pastes VIDEO PROMPT (+ NEGATIVE PROMPT) → verifies → STOP.
  * Throws on failure; processShot handles retry/fail via the shared budget.
  */
-async function runVideoPipeline(tab, shot, settings) {
+async function runVideoPipeline(tab, shot, settings, runId) {
   // Ask the side panel for this shot's source image bytes.
   const image = await requestImageBytes(shot.number);
   if (!image || !image.base64) {
@@ -1290,14 +1377,17 @@ async function runVideoPipeline(tab, shot, settings) {
   // Per-shot data is IMAGE + PROMPT only. Model / duration / resolution /
   // aspect ratio are fixed session settings the user configures manually on the
   // Vheer page before pressing Start — the automation never touches them.
+  // retries=1: the pipeline runs the whole Image→Video workflow and can take
+  // minutes; a re-send would re-run it and duplicate every DOM action.
   const result = await sendToMainFrame(tab.id, {
     type: 'RUN_VIDEO_STEP',
     shotNumber: shot.number,
     prompt: shot.prompt,
     watchdog: buildWatchdogConfig(settings),
     filename: image.filename,
-    imageBase64: image.base64
-  });
+    imageBase64: image.base64,
+    runId
+  }, 1);
   if (!result) throw new Error('Content script rejected RUN_VIDEO_STEP (no response)');
   // Return both outcomes — processShot decides (it reloads on stalled/over-cap
   // and reports the exact stage on failure).
