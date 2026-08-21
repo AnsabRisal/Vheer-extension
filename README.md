@@ -66,6 +66,39 @@ icons/                        ← extension icons
 
 ---
 
+## Universal Numbered Prompt Session
+
+The official shared protocol for image, video, and future providers is the
+**Universal Numbered Prompt Session**. One numbered block equals one generation
+job. The parser converts the human-readable file into generic `PromptJob`
+objects before the provider is called; providers never receive the delimiter or
+job number.
+
+```text
+----------------------------------
+1
+----------------------------------
+IMAGE OR VIDEO PROMPT 1
+----------------------------------
+
+----------------------------------
+2
+----------------------------------
+IMAGE OR VIDEO PROMPT 2
+----------------------------------
+```
+
+Rules:
+
+- The delimiter must be a line containing exactly `----------------------------------`.
+- IDs must be numeric and are retained as stable job IDs; non-consecutive IDs are allowed.
+- Prompt content may contain numbers, hyphens, Markdown-like text, and line breaks.
+- Blank lines between blocks are harmless; empty prompts, duplicate IDs, malformed blocks, and unexpected text are rejected before generation.
+- Image and video imports use this same parser and create one queue item per block.
+
+The legacy `SHOT 001` / `MASTER PROMPT` format below remains supported for
+backward compatibility.
+
 ## Prompt File Format
 
 Each `ALL-MASTER-PROMPTS.md` contains one block per shot:

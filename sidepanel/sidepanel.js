@@ -412,7 +412,10 @@ function renderQueue() {
 
   els.secProject.classList.remove('hidden');
   els.projectName.textContent = q.projectName || settings?.projectName || '';
-  els.shotCount.textContent = q.shots.length + ' shots';
+  const currentLabel = q.currentShotNumber != null
+    ? ' · Prompt ' + q.currentShotNumber + ' / ' + q.shots.length
+    : '';
+  els.shotCount.textContent = q.shots.length + ' shots' + currentLabel;
 
   const completed = q.shots.filter(s => s.status === 'completed').length;
   const pct = Math.round((completed / q.shots.length) * 100);

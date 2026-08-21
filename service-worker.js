@@ -1322,7 +1322,11 @@ async function handleRegenerateShot(mode, shotNumber) {
 
 async function handleImportFile(content, projectName) {
   if (!content || !projectName) return { ok: false, error: 'Missing content or project name' };
-  const { shots, warnings } = parsePromptFile(content);
+  const parsed = parsePromptFile(content);
+  const { shots, warnings, errors = [] } = parsed;
+  if (errors.length) {
+    return { ok: false, error: 'Invalid numbered prompt session: ' + errors.join(' | '), warnings, errors };
+  }
   if (!shots.length) return { ok: false, error: 'No shots found', warnings };
 
   // Full shared queue shape (mode:'image'). Fresh import → new batch → the
@@ -1345,7 +1349,11 @@ async function handleImportFile(content, projectName) {
 
 async function handleImportVideoFile(content, projectName) {
   if (!content || !projectName) return { ok: false, error: 'Missing content or project name' };
-  const { shots, warnings } = parseVideoPromptFile(content);
+  const parsed = parseVideoPromptFile(content);
+  const { shots, warnings, errors = [] } = parsed;
+  if (errors.length) {
+    return { ok: false, error: 'Invalid numbered prompt session: ' + errors.join(' | '), warnings, errors };
+  }
   if (!shots.length) {
     debugLog('Video import', '0 shots — ' + String(content).length + ' chars, preview: ' + JSON.stringify(String(content).slice(0, 120)), false);
     return { ok: false, error: 'No SHOT blocks parsed — expected SHOT001 + IMAGE / VIDEO PROMPT / NEGATIVE PROMPT sections. Received ' + String(content).length + ' chars.', warnings };
