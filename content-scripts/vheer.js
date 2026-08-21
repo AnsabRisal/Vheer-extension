@@ -1380,6 +1380,101 @@
       }
     }
 
+    // =========================================================================
+    //  IMAGE POST-DOWNLOAD CLEANUP
+    //  After a PNG download is confirmed, Delete the Vheer result and wait for
+    //  the Generate button to become active again before scheduling the next shot.
+    // =========================================================================
+
+    /**
+     * IMAGE mode: poll until the generated-result controls (Download / Delete)
+     * are gone and the Generate button is visible and enabled.  Runs on the
+     * Text→Image page.  Re-queries the DOM every tick so stale React elements
+     * are never reused.
+     */
+    function waitForImageReadyState(timeoutMs = 30000) {
+      return new Promise((resolve) => {
+        const start = Date.now();
+        const poll = () => {
+          if (_automationAborted) { resolve({ ok: false, error: 'Aborted by Stop' }); return; }
+          // Fresh DOM queries each tick.
+          const dl  = findDownloadButton();
+          const del = findDeleteButton();
+          const gen = findGenerateButton();
+          if (!dl && !del && gen && !gen.disabled) {
+            resolve({ ok: true });
+            return;
+          }
+          if (Date.now() - start > timeoutMs) {
+            resolve({ ok: false, error: 'Image ready state not detected after ' + Math.round(timeoutMs / 1000) + 's' });
+            return;
+          }
+          setTimeout(poll, 500);
+        };
+        poll();
+      });
+    }
+
+    /**
+     * POST_IMAGE_DOWNLOAD_CLEANUP: after the SW confirms the PNG download is
+     * complete, click Vheer’s Delete button ONCE and wait for the
+     * Generate-ready state to return.  Returns { ok: true } when the
+     * Text→Image page is ready for the next generation.
+     *
+     * Mirrors the structure of performPostDownloadCleanup (video) but checks
+     * Generate-button readiness instead of upload-input readiness.
+     */
+    async function performImagePostDownloadCleanup(msg) {
+      const shotNumber = msg.shotNumber;
+
+      if (_cleanupInProgress) {
+        debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — already in progress, skipping', false);
+        return { ok: false, stage: 'busy', error: 'Cleanup already in progress' };
+      }
+      _cleanupInProgress = true;
+
+      try {
+        const del = findDeleteButton();
+        if (!del) {
+          // No Delete button visible — check whether the page is already ready.
+          debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — no Delete button, checking ready state');
+          const fresh = await waitForImageReadyState(15000);
+          if (fresh.ok) {
+            debugLog('Image Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — page already ready (no Delete needed)');
+            return { ok: true, deleted: false };
+          }
+          debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — Delete button not found and page not ready', false);
+          return { ok: false, stage: 'delete', error: 'Delete button not found and page not ready for next shot' };
+        }
+
+        debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — clicking Delete once');
+        const clicked = await humanClick(del);
+        if (_automationAborted) return { ok: false, stage: 'aborted', error: 'Aborted by Stop' };
+        if (!clicked.ok) return { ok: false, stage: 'delete', error: 'Delete click failed: ' + clicked.error };
+        debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — Delete clicked, waiting for Vheer reset');
+
+        const fresh = await waitForImageReadyState(30000);
+        if (!fresh.ok) {
+          // Build a diagnostic string from a fresh DOM query (no stale refs).
+          const dlNow  = findDownloadButton();
+          const delNow = findDeleteButton();
+          const genNow = findGenerateButton();
+          const reason = [
+            dlNow             ? 'Download button still visible'  : '',
+            delNow            ? 'Delete button still visible'    : '',
+            !genNow           ? 'Generate button not found'      : '',
+            genNow && genNow.disabled ? 'Generate button disabled' : ''
+          ].filter(Boolean).join(', ') || 'page did not reach ready state';
+          debugLog('Image Cleanup', 'page state: ' + reason, false);
+          return { ok: false, stage: 'reset', error: 'Vheer did not reset after Delete: ' + reason };
+        }
+        debugLog('Image Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — Vheer ready for next image');
+        return { ok: true, deleted: true };
+      } finally {
+        _cleanupInProgress = false;
+      }
+    }
+
     /**
      * Dump the Image→Video automation controls (upload / generate / download +
      * all visible buttons) so the real page's DOM can be calibrated. Model,
@@ -1592,6 +1687,13 @@
 
       if (msg.type === 'POST_DOWNLOAD_CLEANUP') {
         performPostDownloadCleanup(msg)
+          .then(sendResponse)
+          .catch(e => sendResponse({ ok: false, error: e.message }));
+        return true;
+      }
+
+      if (msg.type === 'POST_IMAGE_DOWNLOAD_CLEANUP') {
+        performImagePostDownloadCleanup(msg)
           .then(sendResponse)
           .catch(e => sendResponse({ ok: false, error: e.message }));
         return true;

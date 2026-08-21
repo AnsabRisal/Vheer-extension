@@ -720,7 +720,46 @@ async function handleDownloadComplete(downloadId) {
     return;
   }
 
-  scheduleNextShot(m, settings);
+  // IMAGE: Vheer shows a result state (Download / Delete controls) after each
+  // generation. Click Delete and confirm the page has reset before scheduling
+  // the next shot — the same sync pattern used by the video workflow, adapted
+  // for the Text→Image page (checks Generate-button readiness instead of
+  // upload-input readiness).
+  debugLog('Image Cleanup', 'SHOT ' + shotNumber + ' — resetting Vheer result state');
+  try {
+    const tab = await findTargetTab();
+    if (!tab) {
+      // No tab visible — fall back to the normal delayed advance.
+      debugLog('Image Cleanup', 'no Vheer tab — scheduling next shot without cleanup', false);
+      scheduleNextShot(m, settings);
+      return;
+    }
+    // retries=1: the content-script cleanup is async (up to 30 s). Using more
+    // retries risks sending a second Delete click while the first is still in
+    // flight — the same issue that was fixed for the video workflow.
+    const cleanup = await sendToMainFrame(tab.id, {
+      type: 'POST_IMAGE_DOWNLOAD_CLEANUP',
+      shotNumber
+    }, 1);
+    if (cleanup && cleanup.ok) {
+      debugLog('Image Cleanup COMPLETE', 'SHOT ' + shotNumber + ' — scheduling next shot');
+      scheduleNextShot(m, settings);
+      return;
+    }
+    var imageCleanupReason = (cleanup && (cleanup.error || cleanup.stage)) || 'no response';
+  } catch (e) {
+    imageCleanupReason = 'exception: ' + e.message;
+  }
+  // PNG downloaded but Vheer result state NOT reset — starting the next shot
+  // would fail. Halt with a clear error; press Start to resume from this shot.
+  debugLog('Image Cleanup Failed', imageCleanupReason, false);
+  queue.status = 'error';
+  queue.error = 'SHOT ' + shotNumber + ' downloaded but image cleanup failed: ' + imageCleanupReason;
+  chrome.alarms.clear('next-shot');
+  chrome.alarms.clear('next-shot-video');
+  await saveQueue(queue);
+  broadcastQueue(queue);
+  debugLog('BATCH HALTED', queue.error, false);
 }
 
 /**
@@ -1301,7 +1340,17 @@ async function handleSkipDelay(mode) {
 }
 
 async function handleGetState() {
-  return { ok: true, queue: await loadQueue('image'), videoQueue: await loadQueue('video'), settings: await loadSettings() };
+  const q  = await loadQueue('image');
+  const vq = await loadQueue('video');
+  const s  = await loadSettings();
+  // Stamp an ephemeral flag so the side panel can label a restored queue
+  // differently from a freshly-imported one.  This flag is NOT written to
+  // Chrome storage (loadQueue / saveQueue never touch it) and is NOT present
+  // in broadcastQueue() broadcasts, so it disappears the moment a new import
+  // or any queue-update replaces the in-memory object.
+  if (q.shots  && q.shots.length)  q.restoredFromStorage  = true;
+  if (vq.shots && vq.shots.length) vq.restoredFromStorage = true;
+  return { ok: true, queue: q, videoQueue: vq, settings: s };
 }
 
 async function handleRegenerateShot(mode, shotNumber) {

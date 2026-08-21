@@ -151,7 +151,7 @@ els.fileInput.addEventListener('change', async (e) => {
   els.importStatus.className = 'status-text';
   const r = await send({ type: 'IMPORT_FILE', content, projectName: name });
   if (r.ok) {
-    els.importStatus.textContent = (r.count || 0) + ' shots loaded';
+    els.importStatus.textContent = (r.count || 0) + ' prompt jobs loaded';
     els.importStatus.className = 'status-text status-text--ok';
     refresh();
   } else {
@@ -411,11 +411,17 @@ function renderQueue() {
   }
 
   els.secProject.classList.remove('hidden');
-  els.projectName.textContent = q.projectName || settings?.projectName || '';
+  // Restored queues get a neutral label so the user is not misled into
+  // thinking a file was just imported.  Once a fresh import fires (via
+  // QUEUE_UPDATE from handleImportFile) the new queue has no
+  // restoredFromStorage flag and the real project name appears.
+  els.projectName.textContent = q.restoredFromStorage
+    ? 'Restored Queue'
+    : (q.projectName || settings?.projectName || '');
   const currentLabel = q.currentShotNumber != null
     ? ' · Prompt ' + q.currentShotNumber + ' / ' + q.shots.length
     : '';
-  els.shotCount.textContent = q.shots.length + ' shots' + currentLabel;
+  els.shotCount.textContent = q.shots.length + (mode === 'video' ? ' video prompts' : ' image prompts') + currentLabel;
 
   const completed = q.shots.filter(s => s.status === 'completed').length;
   const pct = Math.round((completed / q.shots.length) * 100);
@@ -459,7 +465,7 @@ function renderQueue() {
     const glyph = { completed: '✅', failed: '❌', generating: '⏳', waiting: '…', approved: '✅' }[s.status] || '…';
     const retry = s.retryCount ? ` <span class="text-dim">(retry ${s.retryCount})</span>` : '';
     row.innerHTML = `<span class="shot-glyph">${glyph}</span>` +
-      `<span class="shot-num">SHOT${String(s.number).padStart(3, '0')}</span>` +
+      `<span class="shot-num">Prompt ${String(s.number).padStart(3, '0')}</span>` +
       `<span class="shot-status">${s.status}</span>${retry}`;
     els.shotList.appendChild(row);
   }
@@ -636,7 +642,7 @@ els.videoFileInput.addEventListener('change', async (e) => {
   els.videoImportStatus.className = 'status-text';
   const r = await send({ type: 'IMPORT_VIDEO_FILE', content, projectName: name });
   if (r.ok) {
-    els.videoImportStatus.textContent = (r.count || 0) + ' video shots loaded';
+    els.videoImportStatus.textContent = (r.count || 0) + ' video prompt jobs loaded';
     els.videoImportStatus.className = 'status-text status-text--ok';
     refresh();
   } else {

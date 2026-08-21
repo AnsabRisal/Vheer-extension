@@ -2,7 +2,7 @@
 
 One-button cinematic image generation from your screenplay, built exclusively for [Vheer Text-to-Image](https://vheer.com/app/text-to-image).
 
-Write every master prompt in `ALL-MASTER-PROMPTS.md`, press **Start** in the side panel, and walk away. Every image is downloaded, renamed, and organized automatically.
+Import a Universal Vheer Prompt Session, press **Start** in the side panel, and walk away. Every result is downloaded, renamed, and organized automatically.
 
 ---
 
@@ -12,7 +12,7 @@ Write every master prompt in `ALL-MASTER-PROMPTS.md`, press **Start** in the sid
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked** and select this folder
 4. Click the extension icon → the side panel opens
-5. Click **📂 Import ALL-MASTER-PROMPTS.md** and select your file
+5. Click **📂 Import Universal Prompt Session** and select any `.md`, `.markdown`, or `.txt` session file
 6. Open **https://vheer.com/app/text-to-image** in a tab (configure Model / Aspect Ratio / Image count manually for now)
 7. Click **▶ Start** in the side panel
 
@@ -48,7 +48,7 @@ sidepanel/
 content-scripts/
   vheer.js                    ← Vheer adapter (detector, selectors, inspector, actions, downloader)
 lib/
-  parser.js                   ← ALL-MASTER-PROMPTS.md parser
+  parser.js                   ← universal prompt-session parser + legacy adapters
   storage.js                  ← chrome.storage.local wrapper
 diagnostics/                  ← standalone connection-test page
 icons/                        ← extension icons
@@ -73,6 +73,15 @@ The official shared protocol for image, video, and future providers is the
 job. The parser converts the human-readable file into generic `PromptJob`
 objects before the provider is called; providers never receive the delimiter or
 job number.
+
+### Session loading mechanism
+
+The extension intentionally does not require a story-specific filename. The
+existing side-panel file picker accepts any `.md`, `.markdown`, or `.txt` file
+and detects this protocol from its delimiter structure. A recommended optional
+filename is `UNIVERSAL-VHEER-PROMPT-SESSION.md`, but the filename is not used for
+parsing or routing. Image and video mode use the same protocol and parser while
+writing to their existing mode-specific queues.
 
 ```text
 ----------------------------------
