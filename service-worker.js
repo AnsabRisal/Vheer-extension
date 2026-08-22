@@ -23,7 +23,7 @@ importScripts('lib/parser.js', 'lib/storage.js');
 
 const DEFAULT_SETTINGS = {
   delayMode: 'fixed',       // 'fixed' | 'random'
-  delayBetweenShotsSec: 30,
+  delayBetweenShotsSec: 6,
   delayMinSec: 25,          // for random mode
   delayMaxSec: 45,          // for random mode
   filenameFormat: 'SHOT{N}',
@@ -186,7 +186,7 @@ function delaySec(settings) {
     const max = Math.max(settings.delayMinSec, settings.delayMaxSec);
     return Math.round(min + Math.random() * (max - min));
   }
-  return settings.delayBetweenShotsSec || 30;
+  return settings.delayBetweenShotsSec || 6;
 }
 
 // ---------------------------------------------------------------------------

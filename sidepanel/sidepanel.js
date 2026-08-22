@@ -491,7 +491,7 @@ function renderStats() {
 
   // ETA: remaining shots × (avg gen time + avg delay between shots).
   if (remaining > 0 && st.avgGenSec) {
-    const avgDelay = settings ? (settings.delayBetweenShotsSec || 30) : 30;
+    const avgDelay = settings ? (settings.delayBetweenShotsSec || 6) : 6;
     const etaSec = Math.round(remaining * (st.avgGenSec + avgDelay));
     els.statGenEta.textContent = formatSec(etaSec);
   } else {
@@ -589,7 +589,7 @@ async function saveSettingsForm() {
   const newSettings = {
     ...(settings || {}),
     delayMode: els.setDelayModeRandom.checked ? 'random' : 'fixed',
-    delayBetweenShotsSec: parseInt(els.setDelay.value, 10) || 30,
+    delayBetweenShotsSec: parseInt(els.setDelay.value, 10) || 6,
     delayMinSec: parseInt(els.setDelayMin.value, 10) || 25,
     delayMaxSec: parseInt(els.setDelayMax.value, 10) || 45,
     retries: parseInt(els.setRetries.value, 10) || 3,

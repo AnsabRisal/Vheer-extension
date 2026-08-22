@@ -1739,7 +1739,7 @@
     try { window.__vheerStoryError = String((err && err.stack) || err); } catch (e2) {}
     try {
       chrome.runtime.sendMessage({
-        type: 'CS_CRASH',
+      type: 'CS_CRASH',
         error: String((err && err.message) || err),
         stack: String((err && err.stack) || '')
       }).catch(() => {});
